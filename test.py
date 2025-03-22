@@ -60,21 +60,23 @@ def main(args):
         NormReducer(dim=1),
         Unsqueeze(1)
     )
-
-    if not torch.cuda.is_available():
-        print('using CPU, this will be slow')
-    elif args.multiprocessing_distributed:
-        if args.gpu is not None:
-            torch.cuda.set_device(args.gpu)
-            audio_visual_model.cuda(args.gpu)
-            object_saliency_model.cuda(args.gpu)
-            audio_visual_model = torch.nn.parallel.DistributedDataParallel(audio_visual_model, device_ids=[args.gpu])
-            object_saliency_model = torch.nn.parallel.DistributedDataParallel(object_saliency_model, device_ids=[args.gpu])
+    device = torch.device('mps')
+    audio_visual_model.to(device)
+    object_saliency_model.to(device)
+    # if not torch.cuda.is_available():
+    #     print('using CPU, this will be slow')
+    # elif args.multiprocessing_distributed:
+    #     if args.gpu is not None:
+    #         torch.cuda.set_device(args.gpu)
+    #         audio_visual_model.cuda(args.gpu)
+    #         object_saliency_model.cuda(args.gpu)
+    #         audio_visual_model = torch.nn.parallel.DistributedDataParallel(audio_visual_model, device_ids=[args.gpu])
+    #         object_saliency_model = torch.nn.parallel.DistributedDataParallel(object_saliency_model, device_ids=[args.gpu])
 
     # Load weights
     ckp_fn = os.path.join(model_dir, 'best.pth')
     if os.path.exists(ckp_fn):
-        ckp = torch.load(ckp_fn, map_location='cpu')
+        ckp = torch.load(ckp_fn, map_location='cpu', weights_only=False)
         audio_visual_model.load_state_dict({k.replace('module.', ''): ckp['model'][k] for k in ckp['model']})
         print(f'loaded from {os.path.join(model_dir, "best.pth")}')
     else:
@@ -96,10 +98,15 @@ def validate(testdataloader, audio_visual_model, object_saliency_model, viz_dir,
     evaluator_av = utils.Evaluator()
     evaluator_obj = utils.Evaluator()
     evaluator_av_obj = utils.Evaluator()
+
+    device = torch.device('mps')
+
     for step, (image, spec, bboxes, name) in enumerate(testdataloader):
-        if args.gpu is not None:
-            spec = spec.cuda(args.gpu, non_blocking=True)
-            image = image.cuda(args.gpu, non_blocking=True)
+        # if args.gpu is not None:
+        #     spec = spec.cuda(args.gpu, non_blocking=True)
+        #     image = image.cuda(args.gpu, non_blocking=True)
+        spec = spec.to(device, dtype=torch.float32, non_blocking=True)
+        image = image.to(device, dtype=torch.float32, non_blocking=True)
 
         # Compute S_AVL
         heatmap_av = audio_visual_model(image.float(), spec.float())[1].unsqueeze(1)
